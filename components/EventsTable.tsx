@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import EventBadge from "./EventBadge";
 import { getEventMeta } from "@/lib/eventParser";
 
@@ -10,6 +11,7 @@ export interface MailEventRow {
   from_address: string | null;
   to_addresses: string[];
   client_reference: string | null;
+  email_reference: string | null;
   recipient: string | null;
   reason: string | null;
   diagnostic_message: string | null;
@@ -92,6 +94,14 @@ export default function EventsTable({
               <EventBadge eventName={e.event_name} />
               <span className="text-fg">{e.recipient || e.to_addresses?.[0] || "—"}</span>
               {e.client_reference && <span className="text-faint">ref: {e.client_reference}</span>}
+              {e.email_reference && (
+                <Link
+                  href={`/emails/${encodeURIComponent(e.email_reference)}`}
+                  className="ml-auto text-xs text-faint hover:text-amber transition"
+                >
+                  Report →
+                </Link>
+              )}
             </div>
             {(e.subject || e.reason || e.diagnostic_message) && (
               <div className="mt-1 pl-[4.5rem] text-faint">

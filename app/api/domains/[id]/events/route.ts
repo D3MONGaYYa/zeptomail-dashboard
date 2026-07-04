@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   values.push(pageSize, offset);
   const rowsResult = await query(
     `SELECT id, event_name, subject, from_address, to_addresses, client_reference,
-            recipient, reason, diagnostic_message, processed_time, received_at
+            email_reference, recipient, reason, diagnostic_message, processed_time, received_at
      FROM mail_events
      WHERE ${where}
      ORDER BY received_at DESC

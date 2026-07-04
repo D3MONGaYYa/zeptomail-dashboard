@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import CopyButton from "@/components/CopyButton";
 import StatsChart, { TimeseriesPoint } from "@/components/StatsChart";
+import StatsPieChart from "@/components/StatsPieChart";
 import EventsTable, { MailEventRow } from "@/components/EventsTable";
+import EventBadge from "@/components/EventBadge";
 import { getEventMeta } from "@/lib/eventParser";
 
 interface DomainDetail {
@@ -21,6 +23,24 @@ interface StatsResponse {
   timeseries: TimeseriesPoint[];
 }
 
+interface EmailSummary {
+  emailRef: string;
+  subject: string | null;
+  toAddresses: string[];
+  eventNames: string[];
+  status: string;
+  lastEventAt: string;
+}
+
+type Tab = "stats" | "emails" | "events";
+
+const DAYS_OPTIONS = [
+  { label: "7d", value: 7 },
+  { label: "14d", value: 14 },
+  { label: "30d", value: 30 },
+  { label: "90d", value: 90 },
+];
+
 export default function DomainDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -33,6 +53,12 @@ export default function DomainDetailPage() {
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<Tab>("stats");
+  const [days, setDays] = useState(14);
+
+  const [emails, setEmails] = useState<EmailSummary[]>([]);
+  const [emailPage, setEmailPage] = useState(1);
+  const [emailTotalPages, setEmailTotalPages] = useState(1);
 
   const loadDomain = useCallback(async () => {
     const res = await fetch(`/api/domains/${id}`);
@@ -44,9 +70,9 @@ export default function DomainDetailPage() {
   }, [id, router]);
 
   const loadStats = useCallback(async () => {
-    const res = await fetch(`/api/domains/${id}/stats?days=14`);
+    const res = await fetch(`/api/domains/${id}/stats?days=${days}`);
     setStats(await res.json());
-  }, [id]);
+  }, [id, days]);
 
   const loadEvents = useCallback(async () => {
     const params = new URLSearchParams({ page: String(page), page_size: "20" });
@@ -58,18 +84,37 @@ export default function DomainDetailPage() {
     setTotalPages(data.totalPages);
   }, [id, page, filter, search]);
 
-  useEffect(() => {
-    loadDomain();
-    loadStats();
-  }, [loadDomain, loadStats]);
+  const loadEmails = useCallback(async () => {
+    const params = new URLSearchParams({ page: String(emailPage), page_size: "20", domain_id: id });
+    const res = await fetch(`/api/emails?${params.toString()}`);
+    const data = await res.json();
+    setEmails(data.emails);
+    setEmailTotalPages(data.totalPages);
+  }, [id, emailPage]);
 
   useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+    loadDomain();
+  }, [loadDomain]);
+
+  useEffect(() => {
+    if (tab === "stats") loadStats();
+  }, [loadStats, tab]);
+
+  useEffect(() => {
+    if (tab === "events") loadEvents();
+  }, [loadEvents, tab]);
+
+  useEffect(() => {
+    if (tab === "emails") loadEmails();
+  }, [loadEmails, tab]);
 
   useEffect(() => {
     setPage(1);
   }, [filter, search]);
+
+  useEffect(() => {
+    setEmailPage(1);
+  }, [tab]);
 
   async function toggleActive() {
     if (!domain) return;
@@ -114,9 +159,15 @@ export default function DomainDetailPage() {
   const totalEvents = stats.totals.reduce((sum, t) => sum + t.count, 0);
   const eventNames = stats.totals.map((t) => t.eventName);
 
+  const TABS: { key: Tab; label: string }[] = [
+    { key: "stats", label: "Stats & Charts" },
+    { key: "emails", label: "Emails" },
+    { key: "events", label: "Event Log" },
+  ];
+
   return (
     <div>
-      <Link href="/" className="text-xs text-faint hover:text-muted">
+      <Link href="/domains" className="text-xs text-faint hover:text-muted">
         ← All domains
       </Link>
 
@@ -164,32 +215,130 @@ export default function DomainDetailPage() {
         </p>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryCard label="Total events" value={totalEvents} />
-        {stats.totals.slice(0, 3).map((t) => (
-          <SummaryCard key={t.eventName} label={getEventMeta(t.eventName).label} value={t.count} />
+      <div className="mt-6 flex gap-1 border-b border-line">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-[1px] ${
+              tab === t.key
+                ? "border-amber text-fg"
+                : "border-transparent text-muted hover:text-fg"
+            }`}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-medium text-muted">Last 14 days</h2>
-        <StatsChart timeseries={stats.timeseries} eventNames={eventNames} />
-      </div>
+      {tab === "stats" && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex gap-1">
+              {DAYS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setDays(opt.value)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                    days === opt.value
+                      ? "bg-line2 text-fg"
+                      : "text-faint hover:text-muted"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-medium text-muted">Event log</h2>
-        <EventsTable
-          events={events}
-          eventOptions={eventNames}
-          activeFilter={filter}
-          onFilterChange={setFilter}
-          search={search}
-          onSearchChange={setSearch}
-          page={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-        />
-      </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <SummaryCard label="Total events" value={totalEvents} />
+            {stats.totals.slice(0, 3).map((t) => (
+              <SummaryCard key={t.eventName} label={getEventMeta(t.eventName).label} value={t.count} />
+            ))}
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div>
+              <h2 className="mb-2 text-sm font-medium text-muted">Last {days} days</h2>
+              <StatsChart timeseries={stats.timeseries} eventNames={eventNames} />
+            </div>
+            <div>
+              <h2 className="mb-2 text-sm font-medium text-muted">Event distribution</h2>
+              <StatsPieChart data={stats.totals.map((t) => ({ name: t.eventName, count: t.count }))} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "emails" && (
+        <div className="mt-6">
+          {emails.length === 0 ? (
+            <div className="rounded-card border border-dashed border-line2 p-10 text-center">
+              <p className="text-sm text-muted">No emails found for this domain.</p>
+            </div>
+          ) : (
+            <div className="rounded-card border border-line bg-panel divide-y divide-line">
+              {emails.map((e) => (
+                <Link
+                  key={e.emailRef}
+                  href={`/emails/${encodeURIComponent(e.emailRef)}`}
+                  className="flex items-center gap-3 px-4 py-3 transition hover:bg-line/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-fg truncate">{e.subject || "(no subject)"}</div>
+                    <div className="text-xs text-faint truncate">{e.toAddresses[0] || "—"}</div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    {e.eventNames.slice(0, 3).map((n) => (
+                      <EventBadge key={n} eventName={n} />
+                    ))}
+                  </div>
+                  <span className="text-xs text-faint shrink-0">
+                    {new Date(e.lastEventAt).toLocaleDateString()}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {emailTotalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between text-xs text-muted">
+              <button
+                onClick={() => setEmailPage(Math.max(1, emailPage - 1))}
+                disabled={emailPage <= 1}
+                className="rounded-md px-2 py-1 hover:text-fg disabled:opacity-40"
+              >
+                ← Prev
+              </button>
+              <span>Page {emailPage} of {emailTotalPages}</span>
+              <button
+                onClick={() => setEmailPage(Math.min(emailTotalPages, emailPage + 1))}
+                disabled={emailPage >= emailTotalPages}
+                className="rounded-md px-2 py-1 hover:text-fg disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "events" && (
+        <div className="mt-6">
+          <EventsTable
+            events={events}
+            eventOptions={eventNames}
+            activeFilter={filter}
+            onFilterChange={setFilter}
+            search={search}
+            onSearchChange={setSearch}
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        </div>
+      )}
     </div>
   );
 }

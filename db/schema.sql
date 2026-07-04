@@ -32,3 +32,5 @@ CREATE INDEX IF NOT EXISTS idx_mail_events_domain_id ON mail_events (domain_id);
 CREATE INDEX IF NOT EXISTS idx_mail_events_event_name ON mail_events (event_name);
 CREATE INDEX IF NOT EXISTS idx_mail_events_received_at ON mail_events (received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mail_events_domain_received ON mail_events (domain_id, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mail_events_email_ref ON mail_events (email_reference);
+CREATE INDEX IF NOT EXISTS idx_mail_events_domain_email_ref ON mail_events (domain_id, email_reference);

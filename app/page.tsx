@@ -1,78 +1,106 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import DomainCard, { DomainSummary } from "@/components/DomainCard";
-import AddDomainModal from "@/components/AddDomainModal";
+import { useEffect, useState } from "react";
+import StatsPieChart from "@/components/StatsPieChart";
+import DomainBarChart from "@/components/DomainBarChart";
+import RecentEvents from "@/components/RecentEvents";
+import { getEventMeta } from "@/lib/eventParser";
 
-export default function HomePage() {
-  const [domains, setDomains] = useState<DomainSummary[] | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
+interface OverviewStats {
+  domainCount: number;
+  totalEvents: number;
+  totalBounces: number;
+  bounceRate: number;
+  eventsLast7d: number;
+  mostBouncedDomain: {
+    id: number;
+    name: string;
+    bounceCount: number;
+    bounceRate: number;
+  } | null;
+  perDomainStats: {
+    id: number;
+    name: string;
+    totalEvents: number;
+    bounceEvents: number;
+    lastEventAt: string | null;
+  }[];
+  eventDistribution: { name: string; count: number }[];
+  recentEvents: {
+    id: number;
+    eventName: string;
+    recipient: string | null;
+    subject: string | null;
+    domainName: string;
+    domainId: number;
+    receivedAt: string;
+  }[];
+}
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/domains");
-    const data = await res.json();
-    setDomains(data.domains);
-  }, []);
+export default function DashboardPage() {
+  const [stats, setStats] = useState<OverviewStats | null>(null);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    fetch("/api/stats/overview")
+      .then((r) => r.json())
+      .then(setStats);
+  }, []);
+
+  if (!stats) {
+    return (
+      <div className="smtp-line text-faint">
+        <span className="smtp-code bg-line text-muted mr-2">220</span>
+        loading…
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Domains</h1>
-          <p className="mt-1 text-sm text-muted">
-            One webhook URL per domain. Point ZeptoMail's Mail Agent webhooks at it.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="rounded-md bg-amber px-3.5 py-2 text-sm font-semibold text-ink transition hover:brightness-110"
-        >
-          + Add domain
-        </button>
+      <h1 className="text-xl font-semibold tracking-tight mb-6">Overview</h1>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryCard label="Domains" value={stats.domainCount} />
+        <SummaryCard label="Total events" value={stats.totalEvents} />
+        <SummaryCard label="Bounce rate" value={`${stats.bounceRate}%`} />
+        <SummaryCard label="Events (7d)" value={stats.eventsLast7d} />
       </div>
 
-      {domains === null && (
-        <div className="smtp-line text-faint">
-          <span className="smtp-code bg-line text-muted mr-2">220</span>
-          loading domains…
+      {stats.mostBouncedDomain && (
+        <div className="mt-4 rounded-card border border-red/30 bg-red/10 p-4">
+          <div className="text-xs font-medium uppercase tracking-wide text-red">Most bounced domain</div>
+          <div className="mt-1 flex items-baseline gap-3">
+            <span className="font-mono text-lg font-semibold text-fg">{stats.mostBouncedDomain.name}</span>
+            <span className="font-mono text-sm text-red">{stats.mostBouncedDomain.bounceCount} bounces</span>
+            <span className="text-xs text-faint">({stats.mostBouncedDomain.bounceRate}%)</span>
+          </div>
         </div>
       )}
 
-      {domains?.length === 0 && (
-        <div className="rounded-card border border-dashed border-line2 p-10 text-center">
-          <p className="text-sm text-muted">No domains tracked yet.</p>
-          <p className="mt-1 text-xs text-faint">
-            Add one to get a unique webhook URL you can paste into ZeptoMail.
-          </p>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="mt-4 rounded-md bg-amber px-3.5 py-2 text-sm font-semibold text-ink transition hover:brightness-110"
-          >
-            + Add domain
-          </button>
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-2 text-sm font-medium text-muted">Event distribution</h2>
+          <StatsPieChart data={stats.eventDistribution} />
         </div>
-      )}
-
-      {domains && domains.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {domains.map((d) => (
-            <DomainCard key={d.id} domain={d} />
-          ))}
+        <div>
+          <h2 className="mb-2 text-sm font-medium text-muted">Events per domain</h2>
+          <DomainBarChart data={stats.perDomainStats} />
         </div>
-      )}
+      </div>
 
-      {showAdd && (
-        <AddDomainModal
-          onClose={() => setShowAdd(false)}
-          onCreated={() => {
-            load();
-          }}
-        />
-      )}
+      <div className="mt-6">
+        <h2 className="mb-2 text-sm font-medium text-muted">Latest triggers</h2>
+        <RecentEvents events={stats.recentEvents} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-card border border-line bg-panel p-4">
+      <div className="font-mono text-xl font-semibold">{typeof value === "number" ? value.toLocaleString() : value}</div>
+      <div className="mt-1 text-xs text-faint">{label}</div>
     </div>
   );
 }
